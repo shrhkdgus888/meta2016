@@ -1,0 +1,142 @@
+library(rjson) 
+library(RCurl) 
+library(tm) 
+library(SnowballC) 
+
+###Set working dir path 
+setwd("C:/meta2016")
+a<-"talks_music.json"
+b<-"talks_time.json"
+c<-"talks_art.json"
+d<-"talks_free.json"
+
+
+
+###Read a json file to workspace 
+music<-fromJSON(file=a, method="C")
+time<-fromJSON(file=b, method="C") 
+art<-fromJSON(file=c, method="C") 
+free<-fromJSON(file=d, method="C")
+all_json<-c(music, time, art, free)
+
+#str(all_json)
+names<-names(music$talks[[1]]$talk)
+names
+
+
+###Convertobject type 
+music<-lapply(music$talks, function(x){unlist(x)})
+time<-lapply(time$talks, function(x){unlist(x)}) 
+art<-lapply(art$talks, function(x){unlist(x)}) 
+free<-lapply(free$talks, function(x){unlist(x)}) 
+all_json<-lapply(c(music$talks, time$talks, art$talks, free$talks), function(x){unlist(x)})
+str(all_json)
+
+
+all<-data.frame() 
+df<-do.call("rbind", c(all, music, time, art, free))
+df<-data.frame(df)
+
+
+###Chage datatype of talk description 
+df$talk.description<-as.character(df$talk.description) 
+str(df$talk.description) 
+
+###Change names of variables 
+names(df)<-names 
+str(df)
+
+
+#####Term Clustering
+
+###Convert object type
+class(df$description)
+ted_docs <- Corpus(VectorSource(df$description))
+class(ted_docs)
+
+###Pre-processing
+ted_docs <- tm_map(ted_docs, tolower)
+ted_docs <- tm_map(ted_docs, removeNumbers)
+ted_docs <- tm_map(ted_docs, removePunctuation)
+ted_docs <- tm_map(ted_docs, removeWords, stopwords("SMART"))
+ted_docs <- tm_map(ted_docs, removeWords, "ted")
+
+
+###Tokenizing
+strsplit_space_tokenizer <- function(x)
+  unlist(strsplit(as.character(x), "[[:space:]]+"))
+#token_docs<-(sapply(ted_docs, strsplit_space_tokenizer))
+token_docs<-(sapply(ted_docs$content, strsplit_space_tokenizer))
+token_freq<-table(unlist(token_docs))
+summary(data.frame(token_freq)$Freq)
+
+###Stemming
+stem_docs <- sapply(token_docs, stemDocument)
+stem_freq<-table(unlist(stem_docs))
+summary(data.frame(stem_freq)$Freq)
+
+df_stem_freq<-data.frame(stem_freq)
+str(df_stem_freq)
+
+
+###Term-Doc Matrix with Stemming
+class(stem_docs)
+stem_docs <- Corpus(VectorSource(stem_docs))
+class(stem_docs)
+
+###term weight: TfIDF
+ted_tdm <- TermDocumentMatrix(stem_docs,
+                              control = list(removePunctuation = TRUE,
+                                             weighting=weightTfIdf,
+                                             stopwords = TRUE))
+
+inspect(ted_tdm[1,])
+
+
+#####Hierachical Clustering: Term Clustering
+###Remove sparse terms
+ted_tdm_sparse <- removeSparseTerms(ted_tdm, sparse = 0.90)
+ted_tdm_sparse$nrow
+ted_tdm<-ted_tdm_sparse
+
+###Convert to matrix
+ted_m <- as.matrix(ted_tdm)
+
+###Calculate similarity
+###dist {stats} Distance Matrix Computation
+###scale {base} Scaling and Centering of Matrix-like Objects
+distMatrix<- dist(scale(ted_m))
+
+###Execute hierarchial clustering
+###hclust {stats} Hierarchical Clustering
+###method=c("single", complete", "average", "mcquitty", "median", "centroid", "ward.D", "ward.D2)
+fit <- hclust(distMatrix, method="Ward.D")
+
+###Draw dendrogram
+plot(fit)
+###rect.hclust {stats} Draw Rectangles Around Hierarchical Clusters
+###k = number of clusters
+rect.hclust(fit, k=5)
+
+###Save the dendrogram as PNG image file
+png("./dendrogram_sparse0.90W.png", width = 1200, height=600)
+plot(fit)
+###k= number of clusters
+rect.hclust(fit, k=5)
+dev.off()
+
+###Assign a cluster to a term
+###cutree {stats} Cut a Tree into Groups of Data
+###k= number of clusters
+groups <- cutree(fit, k=5)
+df_groups <- data.frame(groups)
+str(df_groups)
+df_groups$KWD <- rownames(df_groups)
+str(df_groups)
+
+###Write the clustering result to text file
+write.table(df_groups, "./tc_result_W.txt", row.names=FALSE, col.names=TRUE, sep="\t")
+
+write.table(df$description,"talks_all script")
+
+

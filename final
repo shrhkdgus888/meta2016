@@ -1,0 +1,32 @@
+Enter file contents herelibrary(rjson) 
+library(RCurl) 
+library(tm) 
+library(SnowballC) 
+
+###Set working dir path 
+setwd("C:/meta2016")
+
+
+
+###Read a json file to workspace 
+json_music<-fromJSON(file = "talks_music.json")
+json_time<-fromJSON(file = "talks_time.json")
+json_art<-fromJSON(file = "talks_art.json")
+json_free<-fromJSON(file = "talks_free.json")
+all_list<-list(json_music, json_time, json_art, json_free)
+all_talks_list<-toJSON(all_list)
+all_talks_list
+
+
+names<-names(json_music$talks[[1]]$talk)
+
+
+###Convertobject type 
+all_talks_list<-lapply(json_music$talks, function(x){unlist(x)})
+all_talks_list<-lapply(json_time$talks, function(x){unlist(x)}) 
+all_talks_list<-lapply(json_art$talks, function(x){unlist(x)}) 
+all_talks_list<-lapply(json_free$talks, function(x){unlist(x)}) 
+
+all_talks_list<-data.frame() 
+df<-do.call("rbind", c(all_talks_list, json_music, json_time, json_art, json_free))
+df<-data.frame(df) 
